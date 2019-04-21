@@ -1,0 +1,156 @@
+蓝牙在linux下需要的库
+bluez-libs-3.36.tar.gz
+expat-2.1.0.tar.gz
+dbus-1.10.0.tar.gz 
+glib-2.26.1.tar.gz
+bluez-utils-3.36.tar.gz
+libusb-1.0.9.tar.bz2
+
+1，编译bluez-libs-3.36.tar.gz
+tar zxvf bluez-lib-3.36.tar.gz
+./configure --prefix=/opt/arm/bluez --host=arm-linux --target=arm-linux CC=arm-linux-gcc
+make 
+make install
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+2，编译expat-2.1.0.tar.gz
+tar zxvf expat-2.1.0.tar.gz
+./configure --prefix=/opt/arm/bluez --host=arm-linux --target=arm-linux     CC=arm-linux-gcc
+make 
+make install
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+3，编译dbus-1.10.0.tar.gz
+tar zxvf dbus-1.10.0
+
+/*如果不想出现问题configure: error: Could not find expat.h, check config.log for failed attempts那么就要先执行下面两行export*/
+export LDFLAGS=-Wl,-L/usr/local/lib,-lexpat 
+export CPPFLAGS=-I/usr/local/include
+
+echo ac_cv_have_abstract_sockets=yes>arm-linux.cache
+./configure --prefix=/opt/arm/bluez --host=arm-linux --target=arm-linux     CC="arm-linux-gcc -I/opt/arm/bluez/include -L/opt/arm/bluez/lib" --cache-file=arm-linux.cache --with-x=no
+make 
+make install
+
+如果编译dbus-1.0.2会出现make[3]: *** [dbus-sysdeps-unix.lo] 错误 1 编译dbus-1.10.0就不会出现这个错误
+这个时候要进到dbus-1.0.2目录下的dbus目录，vim dbus-sysdeps-unix.c，
+然后在文件的开头处添加如下结构体;
+		struct ucred {  
+			pid_t pid; /* PID of sending process. */ 
+			uid_t uid; /* UID of sending process. */ 
+			gid_t gid; /* GID of sending process. */
+
+			};
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+4，编译glib-2.26.1.tar.gz
+安装glib 时出现glib msgfmt.. no （这个问题极易出现在Ubuntu 上） 
+解决方案：apt-get install gettest
+
+安装glib 时出现 error: Could not find a glib-genmarshal in your PATH， 
+解决方案：先在主机安装 apt-get install libglib2.0-dev一
+
+configure: error: cannot run test program while cross compiling 
+就检查依赖关系，然后修改arm-linux.cache文件 
+向arm-linux.cache文件中写入配置信息，我们在编译前通过echo向该文件中写入的配置，就是为了解决这些问题
+
+configure: error: Could not find a glib-genmarshal in your PATH 
+安装libglib2.0-dev 
+sudo apt-get install libglib2.0-dev
+
+tar  -zxjf  glib-2.26.1.tar.gz
+echo ac_cv_type_long_long=yes>arm-linux.cache
+echo glib_cv_stack_grows=no>>arm-linux.cache
+echo glib_cv_uscore=no>>arm-linux.cache
+echo ac_cv_func_posix_getpwuid_r=yes>>arm-linux.cache
+echo ac_cv_func_posix_getgrgid_r=yes>>arm-linux.cache
+#注意：">"和">>"的区别
+
+./configure --prefix=/opt/arm/bluez --host=arm-linux --target=arm-linux     CC="arm-linux-gcc -I/opt/arm/bluez/include -L/opt/arm/bluez/lib" --cache-file=arm-linux.cache
+make 
+make install
+
+在glib-2.24.2中configure之前还要加一句export NM=nm
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+5，编译bluez-utils-3.36.tar.gz
+
+bluez-utils ./configure 时出现：BLUEZ no Bluetooth library is required 
+解决方案：sudo apt-get install libbluetooth-dev
+
+bluez-utils ./configure 时出现：configure: error: D-Bus library is required 
+解决方案：sudo apt-get install libdbus-1-dev libdbus-glib-1-dev
+
+bluez-utils 编译 make 时出现bluez libgmodule-2.0.so could not read symbols: File in wrong 等 
+解决方案： 查看 glib 配置时的 arm-linux.cache 和环境变量的配置，问题极有可能出现在这里
+
+tar zxvf bluez-utils-3.36.tar.gz
+./configure --prefix=/opt/arm/bluez --host=arm-linux --target=arm-linux     CC="arm-linux-gcc -I/opt/arm/bluez/include -L/opt/arm/bluez/lib" --disable-audio
+make 
+make install
+
+
+
+
+
+到这里其实蓝牙需要的软件和应用程序都有了。
+
+6，libusb-1.0.9.tar.bz2
+这个库我看是USB驱动蓝牙的库，我用的IMX6平台上面是SDIOwifi和串口蓝牙，没有用到USB部分所以没有编译USB的库
+
+
+
+
+------------------------------------------------蓝牙bluez移植完成后在开发板上面如何启动---------------------------------------
+
+先按照博通的文档brcm_patchram_plus -d --enable_hci --no2bytes --tosleep 200000 --baudrate 3000000 --patchram /etc/firmware/bcm43438a0.hcd /dev/ttymxc3 & 打开蓝牙驱动
+然后hciconfig hci0 up启动蓝牙
+
+然后用命令dbus-daemon --system 打开dbus进程，这样才能用后续的hcid启动hcid.conf配置文件，蓝牙就打开了。
+在执行dbus-daemon --system过程中会出现Failed to start message bus: Failed to open "/home/xiang/IMX6/bluetooth/imx_bluez/share/dbus-1/system.conf": No such file or directory 这样的错误信息
+
+这是因为在PC机上交叉编译库的时候是建立在/home/xiang/IMX6/bluetooth/imx_bluez/etc/dbus-1这样一个目录路径下的，所以开发板没有这个路径，要在文件系统里面模拟出PC这个路径，用mkdir创建。
+
+然后将/etc/dbus-1整个文件拷贝到/home/xiang/IMX6/bluetooth/imx_bluez/etc/下面，最好在做文件系统的时候就直接做进去
+
+再执行dbus-daemon --system 这个的时候又会出现Failed to start message bus: Failed to bind socket "/home/xiang/IMX6/bluetooth/imx_bluez/var/run/dbus/system_bus_socket": No such file or directory
+
+system_bus_socket 这个文件不是创建的是dbus-daemon --system自动生成的，但是前提是你得在路径里面把前面的目录创建好/home/xiang/IMX6/bluetooth/imx_bluez/var/run/dbus
+
+然后再执行hcid -f /usr/etc/bluetooth/hcid.conf -n -d & 的时候，会报出Parsing /home/xiang/IMX6/bluetooth/imx_bluez/etc/bluetooth/main.conf failed: No such file or directory 这个错误
+这个main.conf是一个空文件，/home/xiang/IMX6/bluetooth/imx_bluez/etc/bluetooth/所以要在该路径下面创建一个main.conf的空文件，
+然后再执行hcid -f /usr/etc/bluetooth/hcid.conf -n -d & 就可以了
+
+
+dbus-daemon --system这个命令在第二次开机的时候会执行错误，因为上一次执行后在文件系统/home/xiang/IMX6/bluetooth/imx_bluez/var/run/dbus/上已经保存了pid和system_bus_socket
+所以开机后要先删除pid和system_bus_socket
+再执行dbus-daemon --system 这样在文件系统里面有从新启动了dbus服务
+
+hcid -f /usr/etc/bluetooth/hcid.conf -n -d & 这个命令也不能用上一次开机保存的pid和system_bus_socket
+
+必须执行dbus-daemon --system  从新创建的pid和system_bus_socket
+然后再hcid -f /usr/etc/bluetooth/hcid.conf -n -d & 才有效
+
+
+一般我在文件系统里面就设置了开发板启动后先删除pid和system_bus_socket
+然后打开蓝牙
+执行dbus-daemon --system
+hcid -f /usr/etc/bluetooth/hcid.conf -n -d &
+
+
+main.conf这个配置文件需要注意一点，在ubuntu上面创建然后要报错，在开发板上面创建没问题
+
+到此为止IMX6平台上移植蓝牙就算完成了
+
+
+
+
+

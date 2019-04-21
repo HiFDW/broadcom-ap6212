@@ -1,0 +1,3 @@
+先将brcm_patchram_plus.c用交叉编译器编译成应用程序，放在/bin下面。然后将bcm43438a0.hcd放在etc/fireware固件库下面
+
+然后按照文档来进行启动蓝牙

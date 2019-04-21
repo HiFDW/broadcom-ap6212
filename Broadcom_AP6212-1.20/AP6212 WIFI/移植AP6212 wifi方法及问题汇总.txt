@@ -1,0 +1,84 @@
+								移植AP6212wifi芯片方法
+
+
+
+1.1驱动源码拷贝到内核目录下drivers/net/wireless。修改BCMDHD.xx 目录下的Makefile 文件头文件路径。
+1.2修改bcm43....文件下dhd_gpio.c文件，
+ gpio_wl_reg_on = 22; GPIO0_22,这就是AP6212对应的REG_ON,用于开启内部电源模块.
+ gpio_wl_host_wake = -1// make menuconfig -> Broadcom Full配置项的Interrupt type 有两种选择：
+                     设置为Out-of-Band，需要设置连接到AP6212 wl_host_wake对应的CPU管脚。
+					 设置为Input-of-band 使用SDIO内部中断。
+					 我这里CPU 没有连接这个管脚。因此需要配置Input-of-band
+
+2.编译libnl库，因为libnl库的第一个动作是执行./configure，但是执行这个软件要安装两个附加软件 apt-get install bison 和apt-get inxtall fiex
+3.配置libnl库./configure --host=arm-poky-linux --prefix=$PWD/tmp 编译完成过的软件install在当前tmp目录
+4.编译hostapd ，cp defconfig .config
+5.修改.config文件，增加CONFIG_LIBNL32=y 和CONFIG_IEEE80211N=y 
+6.CONFIG_IEEE80211N=y 这个配置如果是要用wifi芯片的AP模式那么这个就必须加，如果不加在执行hostapd就会报Line 6: unknown configuration item 'ieee80211n'错误
+7. CONFIG_IEEE80211N=y至于为什么这么配置因为我的hostapd.conf是这样配置的        interface=wlan0
+										driver=nl80211
+										ssid=CdataAP
+										channel=6
+										ieee80211n=1
+										hw_mode=g
+										ignore_broadcast_ssid=0
+
+8.STA模式是用udhcpc -i wlan0来启动
+
+9.AP模式是用udhcpd 
+udhcpd使用的时候要先用hostapd启动hostapd.conf
+
+然后在/etc/下创建udhcpd.conf文件，文件内容如下start 192.168.2.2  //动态分配IP起始地址
+					      end 192.168.2.254  //结束地址
+					      interface wlan0    //wifi网卡接口名
+					      opt dns 192.168.2.1
+					      option subnet 255.255.255.0
+					      opt router 192.168.2.1
+					      option domain local
+					      option lease 864000
+
+然后再 /var/lib/misc/udhcpd.leases创建个空文件，这个文件udhcpd要去识别，但是我感觉没什么用。
+然后ifconfig wlan0 192.168.2.3 自己设置wlan0网卡地址，------------------------------------------注意这个地址要在上面start到end的范围内，而且前面3个段192.168.2必须是一样的，后面一个可以随便设置，如果不一样将会出现ping不通的现象。
+然后udhcpd -f /etc/udhcpd.conf &就启动服务器模式了，这时候手机可以连接AP6212wifi模块了。
+
+
+杀死hostapd进程除了写进程号以外，还可以用进程名来杀死killall -9 hostapd
+
+
+
+10.STA和AP模式在线切换方法：
+可以在内核里面配置firmware_path固件路径，但是这样只要导致开发板上电后不管怎么样都只能保持是一种状态 STA或者AP，如果要切换就只有从新配置内核然后再启动这样很麻烦。
+所以内核的firmware_path配置为空。
+AP6212上电后先指定固件路径，这样在ifconfig wlan0的时候就可以确定其状态是AP还是STA。
+ 
+echo -n “/etc/firmware/fw_bcm43438a0_apsta.bin” >/sys/module/bcmdhd/parameters/firmware_path 这是配置ap模式
+然后ifconfig wlan0 up
+hostapd hostapd.conf & //启动AP
+udhcpd -f /etc/udhcpd.conf & //自动给接入AP6212的手机分配IP
+
+
+11.如果要切换成STA模式
+先杀死AP模式的服务软件
+killall -9 hostapd
+killall -9 udhcpd
+然后ifconfig wlan0 down //关闭处于AP模式的wlan0
+
+然后echo -n “/etc/firmware/fw_bcmd43438a0.bin” > /sys/module/bcmdhd/parameters/firmware_path 加载STA模式的固件
+ifconfig wlan0 up 这样就启动wlan0进入STA模式了。
+然后wpa_supplicant -B -c /wpa_app.conf -iwlan0 //加载配置文件里面的内容
+然后udhcpc -i wlan0 自动分配IP
+然后就可以ping百度了
+
+如果又想进入AP模式
+那么killall wpa_supplicant 这个一定要先杀掉 否则AP模式会出现bug
+让关ifconfig wlan0 down
+然后重复上面第10步的动作就行了
+
+
+
+12.在硬件电路设计的时候SDIO总线必须等长，SD_CLK时钟线可能要长于其他线，或者用0欧姆电阻到10欧电阻进行阻抗匹配，具体取值实情况而定，现在取的10欧姆没问题
+
+
+
+
+

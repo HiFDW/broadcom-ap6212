@@ -1,0 +1,74 @@
+IMX6移植蓝牙的时候采用的是串口映射蓝牙接口；
+
+现在以博通AP6212为例，将蓝牙移植到IMX6上面；
+
+1.先在IMX6下修改设备树，在imx6qdl-sabresd.dtsi设备树里面加入以下内容
+
+ pinctrl_uart4_1: uart4grp-1 {
+                          fsl,pins = <
+                               MX6QDL_PAD_CSI0_DAT12__UART4_TX_DATA 0x1b0b1
+                               MX6QDL_PAD_CSI0_DAT13__UART4_RX_DATA 0x1b0b1
+                               MX6QDL_PAD_CSI0_DAT17__UART4_CTS_B  0x1b0b1
+                               MX6QDL_PAD_CSI0_DAT16__UART4_RTS_B  0x1b0b1
+                         
+                          >;
+                 };
+  
+                pinctrl_uart4dte_1: uart4dtegrp-1 {
+                         fsl,pins = <
+                               MX6QDL_PAD_CSI0_DAT12__UART4_TX_DATA 0x1b0b1
+                               MX6QDL_PAD_CSI0_DAT13__UART4_RX_DATA 0x1b0b1
+                              MX6QDL_PAD_CSI0_DAT17__UART4_CTS_B  0x1b0b1
+                               MX6QDL_PAD_CSI0_DAT16__UART4_RTS_B  0x1b0b1
+                                  
+                         >;      
+                 };      
+
+以上是设置UART4串口的管脚，因为我用的是IMX6的UART4串口
+
+&uart4 {
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_uart4_1>;
+        fsl,uart-has-rtscts;
+        status = "okay";
+};
+
+这是打开UART4流控的蓝牙功能。
+以上设备树编译完成，然后将设备树下载到板子上就可以看到/dev/ttymxc4设备节点了。
+
+------------------------------------------------------------------------------------------以下是硬件部分很重要的地方------------------------------------------------------
+
+飞思卡尔IMX6串口流控大部分都是很其他平台一样的，唯独有两个地方不走寻常路。
+
+硬件设计时，标准的蓝牙接口应该是
+
+AP6212 UART CTS接IMX6_CPU的RTS       蓝牙UART CTS----------->平台CPU的RTS
+
+AP6212 UART RTS接IMX6_CPU的CTS	     蓝牙UART RTS----------->平台CPU的CTS
+
+AP6212 UART TX接IMX6_CPU的RX         蓝牙UART TXD----------->平台CPU的RXD
+
+AP6212 UART RX接IMX6_CPU的TX         蓝牙UART RXD----------->平台CPU的TXD
+
+
+但是飞思卡尔IMX6的串口流控接法就必须要求下面这样接
+
+AP6212 UART CTS接IMX6_CPU的CTS      //这就是IMX6和其他平台不一样的地方，RTC和CTS完全是一一对应的，把我整惨了  
+
+AP6212 UART RTS接IMX6_CPU的RTS      //这就是IMX6和其他平台不一样的地方，RTC和CTS完全是一一对应的，把我整惨了	     
+
+AP6212 UART TX接IMX6_CPU的RX         
+
+AP6212 UART RX接IMX6_CPU的TX         
+
+所以在IMX6平台上画电路图的时候一定要小心它的RTS和CTS
+
+
+以上硬件软件移植完成后就可以按照蓝牙文档去设置和启动蓝牙了，然后就是去移植那些库啊什么的。
+
+
+
+
+
+
+
